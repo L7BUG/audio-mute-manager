@@ -127,3 +127,14 @@
 - 用户在 Windows 上运行交叉编译的 exe,**亲测核心功能全部正常**:
   应用列表枚举、中文界面显示、后台自动静音、前台自动恢复
 - 项目目录整理至 `~/rust/audio-mute-manager/`(Rust 项目集中管理)
+
+### 2026-08-07 字体子集化(体积优化 29MB → 15MB)
+
+- 问题:全量思源黑体 16MB 嵌入导致 exe 高达 29MB
+- 优化:fonttools pyftsubset 提取 **GB2312 一级字(3755 常用汉字)
+  + UI 源码字符(342 个)+ 常用标点**,子集字体 1.7MB(原 1/10)
+- 验证:3791 字符全部覆盖 UI 文本与常见进程名(网易云音乐/微信等)
+- exe 预计 29MB → 15MB
+- 工具链备注:fonttools 装于 ~/.venvs/ft/pylib(--target 方式,规避
+  PEP 668);服务器无 pip/uv,用 ~/.local/bin/python3.11(uv 管理的
+  cpython)执行;注意 `pip --target=~/x` 波浪号不展开,须用 $HOME
