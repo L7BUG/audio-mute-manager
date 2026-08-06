@@ -94,3 +94,31 @@
 - [ ] 开机自启(注册表 Run 键或 Startup 快捷方式,可选)
 - [ ] 应用图标 .ico 嵌入(当前为运行时绘制的托盘图标)
 - [ ] 同进程多会话的去重显示优化(当前已按 PID 聚合)
+
+## 更新记录
+
+### 2026-08-06 字体修复(方块字问题)
+
+- 问题:egui 默认字体不含 CJK,中文界面显示为方块(豆腐块)
+- 修复:`src/ui.rs` 新增 `install_cjk_font()`,编译期通过
+  `include_bytes!` 嵌入思源黑体 Noto Sans SC(assets/NotoSansSC-Regular.otf,
+  15MB,下载自 notofonts/noto-cjk),注册到 Proportional/Monospace 字体族
+- 注意:egui 0.36 的 `font_data` 值为 `Arc<FontData>`(需 Arc::new 包裹);
+  字体引擎(ab_glyph)不支持 .ttc 集合,服务器上的文泉驿正黑(wqy-zenhei.ttc)
+  无法直接使用,故下载单文件 .otf
+- exe 体积:13MB → 约 30MB(含字体)
+
+### 2026-08-06 交叉编译成功(MinGW)
+
+- 服务器自带 `x86_64-w64-mingw32-gcc`(GCC 14)+ `x86_64-pc-windows-gnu` target,
+  可直接交叉编译出 Windows exe(此前仅做 MSVC target 类型检查)
+- `cargo build --target x86_64-pc-windows-gnu --release`:全量 LTO 约 13 分钟
+- 产物:`audio-mute-manager.exe`(PE32+ x86-64,依赖全为系统 DLL)
+- 增加 `#![cfg_attr(windows, windows_subsystem = "windows")]`:隐藏控制台窗口,
+  PE 子系统验证为 Windows GUI(00000002)
+
+### 2026-08-06 Git 远程仓库
+
+- 本地仓库初始化并提交(3 个提交),推送到
+  `git@github.com:L7BUG/audio-mute-manager.git`(main 分支)
+- 服务器已配置 GitHub SSH key 认证(用户 L7BUG)
