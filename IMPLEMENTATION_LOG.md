@@ -1,6 +1,6 @@
 # 实现日志 — Windows 后台应用自动静音工具
 
-> 项目:`/home/l/audio-mute-manager`(Linux 服务器上编写,Windows 目标交叉验证)
+> 项目:`/home/l/rust/audio-mute-manager`(Linux 服务器上编写,Windows 目标交叉验证)
 > 起始:2026-08-06。所有 Windows API 用法已通过
 > `cargo check --target x86_64-pc-windows-msvc` 类型检查验证(0 error / 0 warning)。
 
@@ -85,12 +85,11 @@
 
 - ✅ `cargo check --target x86_64-pc-windows-msvc`:**0 error / 0 warning**
 - ✅ `cargo test`(Linux 本地):5 个策略单测全过
-- ⏳ 未做:Windows 实机运行验证(需用户在 Windows 上 `cargo build --release`
-  后实测)
+- ✅ **Windows 实机验证(用户亲测通过)**:应用列表枚举正常、中文显示
+  正常、勾选后切后台自动静音、切回前台自动恢复——核心功能全部按预期工作
 
 ## 待办(如需继续)
 
-- [ ] Windows 实机测试:列表枚举 / 静音切换 / 新会话接管 / 托盘
 - [ ] 开机自启(注册表 Run 键或 Startup 快捷方式,可选)
 - [ ] 应用图标 .ico 嵌入(当前为运行时绘制的托盘图标)
 - [ ] 同进程多会话的去重显示优化(当前已按 PID 聚合)
@@ -122,3 +121,9 @@
 - 本地仓库初始化并提交(3 个提交),推送到
   `git@github.com:L7BUG/audio-mute-manager.git`(main 分支)
 - 服务器已配置 GitHub SSH key 认证(用户 L7BUG)
+
+### 2026-08-06 Windows 实机验证通过
+
+- 用户在 Windows 上运行交叉编译的 exe,**亲测核心功能全部正常**:
+  应用列表枚举、中文界面显示、后台自动静音、前台自动恢复
+- 项目目录整理至 `~/rust/audio-mute-manager/`(Rust 项目集中管理)
