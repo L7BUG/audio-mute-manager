@@ -11,6 +11,30 @@ use eframe::egui;
 
 use crate::model::{SessionInfo, UiCmd, UiEvent};
 
+/// 嵌入思源黑体(Noto Sans SC),支持中文显示
+/// 字体文件在编译期通过 include_bytes! 打进 exe
+fn install_cjk_font(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "noto_sc".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/NotoSansSC-Regular.otf"
+        ))),
+    );
+    // 优先使用中文字体,回退到默认字体(缺字形时)
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "noto_sc".to_owned());
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .insert(0, "noto_sc".to_owned());
+    ctx.set_fonts(fonts);
+}
+
 /// 托盘命令(由 tray.rs 发送,UI 线程消费)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayCmd {
@@ -34,11 +58,13 @@ pub struct MuteApp {
 
 impl MuteApp {
     pub fn new(
-        _cc: &eframe::CreationContext<'_>,
+        cc: &eframe::CreationContext<'_>,
         cmd_tx: Sender<UiCmd>,
         event_rx: Receiver<UiEvent>,
         tray_rx: Receiver<TrayCmd>,
     ) -> Self {
+        // 嵌入中文字体(egui 默认字体不含 CJK,否则中文显示为方块)
+        install_cjk_font(&cc.egui_ctx);
         let _ = cmd_tx.send(UiCmd::Refresh);
         Self {
             sessions: Vec::new(),
