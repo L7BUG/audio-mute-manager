@@ -11,14 +11,15 @@ use eframe::egui;
 
 use crate::model::{SessionInfo, UiCmd, UiEvent};
 
-/// 嵌入思源黑体(Noto Sans SC),支持中文显示
-/// 字体文件在编译期通过 include_bytes! 打进 exe
+/// 嵌入思源黑体子集(Noto Sans SC Subset),支持中文显示
+/// 子集包含:UI 文字 + GB2312 一级字(3755 常用汉字)+ 常用标点,
+/// 体积 1.7MB(全量 16MB 的 1/10),编译期通过 include_bytes! 打进 exe
 fn install_cjk_font(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
         "noto_sc".to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
-            "../assets/NotoSansSC-Regular.otf"
+            "../assets/NotoSansSC-Subset.otf"
         ))),
     );
     // 优先使用中文字体,回退到默认字体(缺字形时)
