@@ -1,3 +1,7 @@
+//! Windows 后台应用自动静音工具
+//! 主界面为 egui GUI,不需要控制台窗口
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod model;
 mod policy;
 
