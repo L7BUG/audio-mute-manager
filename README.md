@@ -61,4 +61,4 @@ src/
 
 ## 许可
 
-MIT
+MIT License,详见 [LICENSE](LICENSE) 文件。
