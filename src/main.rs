@@ -2,6 +2,7 @@
 //! 主界面为 egui GUI,不需要控制台窗口
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod config;
 mod model;
 mod policy;
 

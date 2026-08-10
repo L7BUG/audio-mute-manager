@@ -37,22 +37,38 @@ impl AudioApi {
         Ok(Self { manager })
     }
 
-    /// 枚举所有音频会话,按 PID 聚合为 SessionInfo 列表
-    pub fn enumerate(&self) -> Vec<SessionInfo> {
-        let mut map: HashMap<u32, (bool, f32, u32)> = HashMap::new();
+    /// 单趟枚举所有会话,返回 (PID, 音量控制接口) 列表。
+    /// 系统会话(无 PID)已过滤;失败的会话跳过,不中断整体。
+    pub fn enumerate_controls(&self) -> Vec<(u32, ISimpleAudioVolume)> {
+        let mut out = Vec::new();
         if let Ok(enumerator) = unsafe { self.manager.GetSessionEnumerator() } {
             let count = unsafe { enumerator.GetCount() }.unwrap_or(0);
             for i in 0..count {
                 if let Ok(ctl) = unsafe { enumerator.GetSession(i) } {
-                    if let Ok(Some((pid, muted, volume))) = session_pid_volume(&ctl) {
-                        let e = map.entry(pid).or_insert((muted, volume, 0));
-                        e.2 += 1;
-                        if e.2 == 1 {
-                            e.0 = muted;
-                            e.1 = volume;
+                    if let Ok(pid) = session_pid(&ctl) {
+                        if pid != 0 {
+                            if let Ok(vol) = ctl.cast::<ISimpleAudioVolume>() {
+                                out.push((pid, vol));
+                            }
                         }
                     }
                 }
+            }
+        }
+        out
+    }
+
+    /// 枚举所有会话,按 PID 聚合为 SessionInfo 列表
+    pub fn enumerate(&self) -> Vec<SessionInfo> {
+        let mut map: HashMap<u32, (bool, f32, u32)> = HashMap::new();
+        for (pid, vol) in self.enumerate_controls() {
+            let muted = unsafe { vol.GetMute() }.map(|b| b.as_bool()).unwrap_or(false);
+            let volume = unsafe { vol.GetMasterVolume() }.unwrap_or(0.0);
+            let e = map.entry(pid).or_insert((muted, volume, 0));
+            e.2 += 1;
+            if e.2 == 1 {
+                e.0 = muted;
+                e.1 = volume;
             }
         }
         let mut list: Vec<SessionInfo> = map
@@ -69,33 +85,10 @@ impl AudioApi {
         list
     }
 
-    /// 对指定 PID 的所有会话设置静音/取消静音
-    pub fn set_mute_for_pid(&self, pid: u32, mute: bool) -> Result<()> {
-        let enumerator = unsafe { self.manager.GetSessionEnumerator()? };
-        let count = unsafe { enumerator.GetCount()? };
-        for i in 0..count {
-            let ctl = unsafe { enumerator.GetSession(i)? };
-            if let Ok(Some((sess_pid, _, _))) = session_pid_volume(&ctl) {
-                if sess_pid == pid {
-                    let vol: ISimpleAudioVolume = ctl.cast()?;
-                    unsafe { vol.SetMute(mute, &GUID::zeroed())? };
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// 恢复所有会话的音量(退出/停止时调用)
     pub fn unmute_all(&self) {
-        if let Ok(enumerator) = unsafe { self.manager.GetSessionEnumerator() } {
-            let count = unsafe { enumerator.GetCount() }.unwrap_or(0);
-            for i in 0..count {
-                if let Ok(ctl) = unsafe { enumerator.GetSession(i) } {
-                    if let Ok(vol) = ctl.cast::<ISimpleAudioVolume>() {
-                        let _ = unsafe { vol.SetMute(false, &GUID::zeroed()) };
-                    }
-                }
-            }
+        for (_pid, vol) in self.enumerate_controls() {
+            let _ = unsafe { vol.SetMute(false, &GUID::zeroed()) };
         }
     }
 
@@ -106,17 +99,10 @@ impl AudioApi {
     }
 }
 
-/// 提取会话的 PID / 静音状态 / 音量;系统会话(无 PID)返回 None
-fn session_pid_volume(ctl: &IAudioSessionControl) -> Result<Option<(u32, bool, f32)>> {
+/// 提取会话的 PID;系统会话返回 0
+fn session_pid(ctl: &IAudioSessionControl) -> Result<u32> {
     let ctl2: IAudioSessionControl2 = ctl.cast()?;
-    let pid = unsafe { ctl2.GetProcessId()? };
-    if pid == 0 {
-        return Ok(None);
-    }
-    let vol: ISimpleAudioVolume = ctl.cast()?;
-    let muted = unsafe { vol.GetMute()? }.as_bool();
-    let volume = unsafe { vol.GetMasterVolume()? };
-    Ok(Some((pid, muted, volume)))
+    unsafe { ctl2.GetProcessId() }
 }
 
 /// COM 通知对象:新会话创建时把 PID 发给 monitor 线程
@@ -132,8 +118,10 @@ impl IAudioSessionNotification_Impl for SessionNotifier_Impl {
     ) -> windows::core::Result<()> {
         // Ref 的 Deref 目标是 Option<IAudioSessionControl>
         if let Some(ctl) = (&*new_session).as_ref() {
-            if let Ok(Some((pid, _, _))) = session_pid_volume(ctl) {
-                let _ = self.tx.send(pid);
+            if let Ok(pid) = session_pid(ctl) {
+                if pid != 0 {
+                    let _ = self.tx.send(pid);
+                }
             }
         }
         Ok(())

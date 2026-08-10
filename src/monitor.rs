@@ -11,6 +11,7 @@ use std::collections::HashSet;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread::JoinHandle;
 
+use windows::core::GUID;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 
 use crate::audio::AudioApi;
@@ -34,6 +35,9 @@ pub fn spawn_monitor(rx_cmd: Receiver<UiCmd>, tx_event: Sender<UiEvent>) -> Moni
     // 前台钩子:独立线程跑消息泵,事件发往 fg_rx。
     // 必须在闭包外启动,避免 fg_tx 被 move 进 monitor 线程。
     let _hook = foreground::spawn_foreground_hook(fg_tx);
+
+    // 启动时主动获取一次前台 PID,避免初始为 None 导致启动瞬间误静音
+    let initial_fg = foreground::foreground_pid();
 
     let thread = std::thread::Builder::new()
         .name("monitor".into())
@@ -61,7 +65,7 @@ pub fn spawn_monitor(rx_cmd: Receiver<UiCmd>, tx_event: Sender<UiEvent>) -> Moni
 
             let mut selected: HashSet<u32> = HashSet::new();
             let mut monitoring = false;
-            let mut foreground_pid: Option<u32> = None;
+            let mut foreground_pid: Option<u32> = initial_fg;
             let mut running = true;
 
             while running {
@@ -84,6 +88,8 @@ pub fn spawn_monitor(rx_cmd: Receiver<UiCmd>, tx_event: Sender<UiEvent>) -> Moni
                         }
                         UiCmd::Start => {
                             monitoring = true;
+                            // 开始监控时刷新一次前台 PID(覆盖启动后一段时间才点击开始的情况)
+                            foreground_pid = foreground::foreground_pid();
                             let _ = tx_event.send(UiEvent::Monitoring(true));
                             if let Some(api) = &audio {
                                 let list = api.enumerate();
@@ -148,7 +154,7 @@ pub fn spawn_monitor(rx_cmd: Receiver<UiCmd>, tx_event: Sender<UiEvent>) -> Moni
     MonitorHandle { _thread: thread }
 }
 
-/// 对选中集合中的每个 PID 应用策略
+/// 对选中集合中的每个会话应用策略(单趟枚举,避免按选中数重复遍历)
 fn apply_policy(
     audio: &Option<AudioApi>,
     selected: &HashSet<u32>,
@@ -156,13 +162,13 @@ fn apply_policy(
 ) {
     let Some(api) = audio else { return };
     let sel: Vec<u32> = selected.iter().copied().collect();
-    for &pid in &sel {
+    for (pid, vol) in api.enumerate_controls() {
         match decide(&sel, foreground_pid, pid) {
             Action::Mute => {
-                let _ = api.set_mute_for_pid(pid, true);
+                let _ = unsafe { vol.SetMute(true, &GUID::zeroed()) };
             }
             Action::Unmute => {
-                let _ = api.set_mute_for_pid(pid, false);
+                let _ = unsafe { vol.SetMute(false, &GUID::zeroed()) };
             }
             Action::None => {}
         }

@@ -4,11 +4,13 @@
 //! 面板 API 统一为 `egui::containers::Panel`。
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
 use eframe::egui;
 
+use crate::config::Config;
 use crate::model::{SessionInfo, UiCmd, UiEvent};
 
 /// 嵌入思源黑体子集(Noto Sans SC Subset),支持中文显示
@@ -55,6 +57,11 @@ pub struct MuteApp {
     event_rx: Receiver<UiEvent>,
     tray_rx: Receiver<TrayCmd>,
     last_refresh: std::time::Instant,
+    /// 持久化配置(按进程名恢复勾选)
+    config: Config,
+    config_path: PathBuf,
+    /// 首次收到会话列表时是否已按配置预勾选
+    config_loaded: bool,
 }
 
 impl MuteApp {
@@ -63,9 +70,11 @@ impl MuteApp {
         cmd_tx: Sender<UiCmd>,
         event_rx: Receiver<UiEvent>,
         tray_rx: Receiver<TrayCmd>,
+        config_path: PathBuf,
     ) -> Self {
         // 嵌入中文字体(egui 默认字体不含 CJK,否则中文显示为方块)
         install_cjk_font(&cc.egui_ctx);
+        let config = Config::load(&config_path);
         let _ = cmd_tx.send(UiCmd::Refresh);
         Self {
             sessions: Vec::new(),
@@ -78,6 +87,9 @@ impl MuteApp {
             event_rx,
             tray_rx,
             last_refresh: std::time::Instant::now(),
+            config,
+            config_path,
+            config_loaded: false,
         }
     }
 
@@ -89,6 +101,18 @@ impl MuteApp {
                     // 清理已不存在的会话勾选
                     let alive: HashSet<u32> = self.sessions.iter().map(|s| s.pid).collect();
                     self.selected.retain(|p| alive.contains(p));
+                    // 首次收到会话时,按配置中的进程名预勾选(重启恢复)
+                    if !self.config_loaded {
+                        self.config_loaded = true;
+                        let names: HashSet<&str> =
+                            self.config.managed().iter().map(|s| s.as_str()).collect();
+                        for s in &self.sessions {
+                            if names.contains(s.process_name.as_str()) {
+                                self.selected.insert(s.pid);
+                            }
+                        }
+                        self.send_selection();
+                    }
                 }
                 UiEvent::Foreground(pid) => self.foreground = pid,
                 UiEvent::Monitoring(on) => self.monitoring = on,
@@ -114,6 +138,18 @@ impl MuteApp {
     fn send_selection(&self) {
         let pids: Vec<u32> = self.selected.iter().copied().collect();
         let _ = self.cmd_tx.send(UiCmd::SetSelection(pids));
+    }
+
+    /// 按当前勾选的进程名更新配置并写盘
+    fn persist_selection(&mut self) {
+        let names: Vec<String> = self
+            .sessions
+            .iter()
+            .filter(|s| self.selected.contains(&s.pid) && !s.process_name.is_empty())
+            .map(|s| s.process_name.clone())
+            .collect();
+        self.config.set_managed(names);
+        self.config.save(&self.config_path);
     }
 }
 
@@ -190,6 +226,7 @@ impl eframe::App for MuteApp {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    let mut selection_changed = false;
                     for s in &self.sessions {
                         let mut checked = self.selected.contains(&s.pid);
                         let is_fg = self.foreground == Some(s.pid);
@@ -222,13 +259,18 @@ impl eframe::App for MuteApp {
                             );
                         });
                         if toggled {
+                            selection_changed = true;
                             if checked {
                                 self.selected.insert(s.pid);
                             } else {
                                 self.selected.remove(&s.pid);
                             }
-                            self.send_selection();
                         }
+                    }
+                    // 循环外统一持久化与同步,避免闭包内 &mut self 与 &self.sessions 借用冲突
+                    if selection_changed {
+                        self.persist_selection();
+                        self.send_selection();
                     }
                 });
             ui.add_space(4.0);

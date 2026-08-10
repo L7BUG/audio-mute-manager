@@ -16,6 +16,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (tray_tx, tray_rx) = mpsc::channel();
     let _tray = crate::tray::setup_tray(tray_tx)?;
 
+    // 配置路径:%APPDATA%\audio-mute-manager\config.txt(勾选应用持久化)
+    let config_path = std::env::var("APPDATA")
+        .map(|dir| std::path::Path::new(&dir).join("audio-mute-manager").join("config.txt"))
+        .unwrap_or_default();
+
     // egui 主界面
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -28,7 +33,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     eframe::run_native(
         "Audio Mute Manager",
         options,
-        Box::new(move |cc| Ok(Box::new(crate::ui::MuteApp::new(cc, cmd_tx, evt_rx, tray_rx)))),
+        Box::new(move |cc| {
+            Ok(Box::new(crate::ui::MuteApp::new(
+                cc,
+                cmd_tx,
+                evt_rx,
+                tray_rx,
+                config_path,
+            )))
+        }),
     )?;
 
     Ok(())
