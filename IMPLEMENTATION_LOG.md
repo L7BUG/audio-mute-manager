@@ -138,3 +138,23 @@
 - 工具链备注:fonttools 装于 ~/.venvs/ft/pylib(--target 方式,规避
   PEP 668);服务器无 pip/uv,用 ~/.local/bin/python3.11(uv 管理的
   cpython)执行;注意 `pip --target=~/x` 波浪号不展开,须用 $HOME
+
+### 2026-08-10 依赖特性裁剪(体积优化 15MB → 11.8MB)
+
+- 问题:exe 15MB;`image` crate 用默认特性拉入 rayon + 全部图片解码器,
+  但实际仅用于内存绘制 32×32 托盘图标(`RgbaImage`/`put_pixel`,零解码调用)
+- 优化(Cargo.toml):
+  - `image` 关默认特性(`default-features = false`),`RgbaImage` 等核心类型仍在 base
+  - `tray-icon` 关默认特性(去掉 Linux 专属 libxdo/gtk)
+  - `eframe` 关默认特性,仅保留 default_fonts/links/wgpu
+    (去掉 accesskit/wayland/x11/web_screen_reader)
+  - `[profile.release]` 增加 `panic = "abort"` + `codegen-units = 1`(已有 lto/strip)
+- 坑:eframe default 特性含 `winit/default`,但**外部依赖声明不能写含斜杠的特性**
+  (报错 `feature winit/default ... is not allowed to contain slashes`);
+  核实 eframe 源码确认 winit 为普通依赖(未设 default-features=false),默认特性
+  始终启用,去掉该写法不影响窗口功能
+- 验证:`cargo check --target x86_64-pc-windows-gnu` 通过 / `cargo test` 5 用例全过
+  / release 交叉编译 1m57s / exe 12,340,224 字节(11.8MB)
+- 环境备注:本机(Arch Linux)交叉编译需
+  `pacman -S --needed mingw-w64-gcc mingw-w64-winpthreads` + `rustup target add x86_64-pc-windows-gnu`
+
