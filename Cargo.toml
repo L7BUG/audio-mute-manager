@@ -19,11 +19,22 @@ windows = { version = "0.62.2", features = [
     "Win32_Media_Audio",
 ] }
 windows-core = "0.62.2"
-eframe = "0.36.0"
-tray-icon = "0.24.2"
-image = "0.25.10"
+# GUI 依赖:裁剪未用特性以减小 exe 体积
+# eframe:关掉 accesskit/wayland/x11/web_screen_reader(Windows 不需要);
+#         保留 default_fonts(拉丁字符),CJK 由自嵌子集字体补充
+eframe = { version = "0.36.0", default-features = false, features = [
+    "default_fonts",
+    "links",
+    "wgpu",
+] }
+# tray-icon:默认带 libxdo/gtk(Linux 专属),Windows 无用,关闭
+tray-icon = { version = "0.24.2", default-features = false }
+# image:默认带 rayon + 全部解码器,本项目仅用内存缓冲区画托盘图标,全部关闭
+image = { version = "0.25.10", default-features = false }
 
 [profile.release]
 opt-level = 3
 lto = true
 strip = true
+panic = "abort"
+codegen-units = 1
