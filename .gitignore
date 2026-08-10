@@ -1,1 +1,5 @@
 /target
+
+# ECC 项目级配置：本机专属部分（含绝对路径/占位符，不提交）
+/.claude/mcp-configs/
+/.claude/ecc/
